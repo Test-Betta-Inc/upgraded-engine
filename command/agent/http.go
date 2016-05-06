@@ -275,10 +275,11 @@ func (s *HTTPServer) registerHandlers(enableDebug bool) {
 		s.mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	}
 
-	// Enable the UI + special endpoints
+	// Use the custom UI dir if provided.
 	if s.uiDir != "" {
-		// Static file serving done from /ui/
 		s.mux.Handle("/ui/", http.StripPrefix("/ui/", http.FileServer(http.Dir(s.uiDir))))
+	} else if s.agent.config.EnableUi {
+		s.mux.Handle("/ui/", http.StripPrefix("/ui/", http.FileServer(assetFS())))
 	}
 
 	// API's are under /internal/ui/ to avoid conflict
@@ -295,7 +296,7 @@ func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Reque
 		// Obfuscate any tokens from appearing in the logs
 		formVals, err := url.ParseQuery(req.URL.RawQuery)
 		if err != nil {
-			s.logger.Printf("[ERR] http: Failed to decode query: %s", err)
+			s.logger.Printf("[ERR] http: Failed to decode query: %s from=%s", err, req.RemoteAddr)
 			resp.WriteHeader(500)
 			return
 		}
@@ -322,14 +323,14 @@ func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Reque
 		// Invoke the handler
 		start := time.Now()
 		defer func() {
-			s.logger.Printf("[DEBUG] http: Request %s %v (%v)", req.Method, logURL, time.Now().Sub(start))
+			s.logger.Printf("[DEBUG] http: Request %s %v (%v) from=%s", req.Method, logURL, time.Now().Sub(start), req.RemoteAddr)
 		}()
 		obj, err := handler(resp, req)
 
 		// Check for an error
 	HAS_ERR:
 		if err != nil {
-			s.logger.Printf("[ERR] http: Request %s %v, error: %v", req.Method, logURL, err)
+			s.logger.Printf("[ERR] http: Request %s %v, error: %v from=%s", req.Method, logURL, err, req.RemoteAddr)
 			code := 500
 			errMsg := err.Error()
 			if strings.Contains(errMsg, "Permission denied") || strings.Contains(errMsg, "ACL not found") {

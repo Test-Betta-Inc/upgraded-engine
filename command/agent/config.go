@@ -94,6 +94,10 @@ type DNSConfig struct {
 // Some of this is configurable as CLI flags, but most must
 // be set using a configuration file.
 type Config struct {
+	// DevMode enables a fast-path mode of opertaion to bring up an in-memory
+	// server with minimal configuration. Useful for developing Consul.
+	DevMode bool `mapstructure:"-"`
+
 	// Bootstrap is used to bring up the first Consul server, and
 	// permits that node to elect itself leader
 	Bootstrap bool `mapstructure:"bootstrap"`
@@ -270,6 +274,10 @@ type Config struct {
 	RetryIntervalWan    time.Duration `mapstructure:"-" json:"-"`
 	RetryIntervalWanRaw string        `mapstructure:"retry_interval_wan"`
 
+	// EnableUi enables the statically-compiled assets for the Consul web UI and
+	// serves them at the default /ui/ endpoint automatically.
+	EnableUi bool `mapstructure:"ui"`
+
 	// UiDir is the directory containing the Web UI resources.
 	// If provided, the UI endpoints will be enabled.
 	UiDir string `mapstructure:"ui_dir"`
@@ -422,6 +430,17 @@ type Config struct {
 	// Minimum Session TTL
 	SessionTTLMin    time.Duration `mapstructure:"-"`
 	SessionTTLMinRaw string        `mapstructure:"session_ttl_min"`
+
+	// Reap controls automatic reaping of child processes, useful if running
+	// as PID 1 in a Docker container. This defaults to nil which will make
+	// Consul reap only if it detects it's running as PID 1. If non-nil,
+	// then this will be used to decide if reaping is enabled.
+	Reap *bool `mapstructure:"reap"`
+}
+
+// Bool is used to initialize bool pointers in struct literals.
+func Bool(b bool) *bool {
+	return &b
 }
 
 // UnixSocketPermissions contains information about a unix socket, and
@@ -504,6 +523,18 @@ func DefaultConfig() *Config {
 		RetryInterval:    30 * time.Second,
 		RetryIntervalWan: 30 * time.Second,
 	}
+}
+
+// DevConfig is used to return a set of configuration to use for dev mode.
+func DevConfig() *Config {
+	conf := DefaultConfig()
+	conf.DevMode = true
+	conf.LogLevel = "DEBUG"
+	conf.Server = true
+	conf.EnableDebug = true
+	conf.DisableAnonymousSignature = true
+	conf.EnableUi = true
+	return conf
 }
 
 // EncryptBytes returns the encryption key configured.
@@ -993,6 +1024,9 @@ func MergeConfig(a, b *Config) *Config {
 	if b.Addresses.RPC != "" {
 		result.Addresses.RPC = b.Addresses.RPC
 	}
+	if b.EnableUi {
+		result.EnableUi = true
+	}
 	if b.UiDir != "" {
 		result.UiDir = b.UiDir
 	}
@@ -1139,6 +1173,10 @@ func MergeConfig(a, b *Config) *Config {
 	result.RetryJoinWan = make([]string, 0, len(a.RetryJoinWan)+len(b.RetryJoinWan))
 	result.RetryJoinWan = append(result.RetryJoinWan, a.RetryJoinWan...)
 	result.RetryJoinWan = append(result.RetryJoinWan, b.RetryJoinWan...)
+
+	if b.Reap != nil {
+		result.Reap = b.Reap
+	}
 
 	return &result
 }

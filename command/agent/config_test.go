@@ -441,6 +441,17 @@ func TestDecodeConfig(t *testing.T) {
 		t.Fatalf("bad: %#v", config)
 	}
 
+	// Static UI server
+	input = `{"ui": true}`
+	config, err = DecodeConfig(bytes.NewReader([]byte(input)))
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	if !config.EnableUi {
+		t.Fatalf("bad: %#v", config)
+	}
+
 	// UI Dir
 	input = `{"ui_dir": "/opt/consul-ui"}`
 	config, err = DecodeConfig(bytes.NewReader([]byte(input)))
@@ -776,6 +787,27 @@ func TestDecodeConfig(t *testing.T) {
 
 	if config.SessionTTLMin != 5*time.Second {
 		t.Fatalf("bad: %s %#v", config.SessionTTLMin.String(), config)
+	}
+
+	// Reap
+	input = `{"reap": true}`
+	config, err = DecodeConfig(bytes.NewReader([]byte(input)))
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	if config.Reap == nil || *config.Reap != true {
+		t.Fatalf("bad: reap not enabled: %#v", config)
+	}
+
+	input = `{}`
+	config, err = DecodeConfig(bytes.NewReader([]byte(input)))
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	if config.Reap != nil {
+		t.Fatalf("bad: reap not tri-stated: %#v", config)
 	}
 }
 
@@ -1209,6 +1241,7 @@ func TestMergeConfig(t *testing.T) {
 		Services:               []*ServiceDefinition{nil},
 		StartJoin:              []string{"1.1.1.1"},
 		StartJoinWan:           []string{"1.1.1.1"},
+		EnableUi:               true,
 		UiDir:                  "/opt/consul-ui",
 		EnableSyslog:           true,
 		RejoinAfterLeave:       true,
@@ -1266,6 +1299,7 @@ func TestMergeConfig(t *testing.T) {
 			RPC:        &net.TCPAddr{},
 			RPCRaw:     "127.0.0.5:1233",
 		},
+		Reap: Bool(true),
 	}
 
 	c := MergeConfig(a, b)
