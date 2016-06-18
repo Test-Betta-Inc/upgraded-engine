@@ -34,6 +34,14 @@ is the same tool that was previously embedded into Consul. See the
 [releases](https://github.com/hashicorp/consul-migrate/releases) page for
 downloadable versions of the tool.
 
+Also, in this release Consul switched from LMDB to a fully in-memory database for
+the state store. Because LMDB is a disk-based backing store, it was able to store
+more data than could fit in RAM in some cases (though this is not a recommended
+configuration for Consul). If you have an extremely large data set that won't fit
+into RAM, you may encounter issues upgrading to Consul 0.6.0 and later. Consul
+should be provisioned with physical memory approximately 2X the data set size to
+allow for bursty allocations and subsequent garbage collection.
+
 #### ACL Enhancements
 
 Consul 0.6 introduces enhancements to the ACL system which may require special
@@ -78,6 +86,18 @@ upgrade is complete.
 Prepared queries introduce a new Raft log entry type that isn't supported on older
 versions of Consul. It's important to not use the prepared query features of Consul
 until all servers in a cluster have been upgraded to version 0.6.0.
+
+#### Single Private IP Enforcement
+
+Consul will refuse to start if there are multiple private IPs available, so
+if this is the case you will need to configure Consul's advertise or bind addresses
+before upgrading.
+
+#### New Web UI File Layout
+
+The release .zip file for Consul's web UI no longer contains a `dist` sub-folder;
+everything has been moved up one level. If you have any automated scripts that
+expect the old layout you may need to update them.
 
 ## Consul 0.5.1
 

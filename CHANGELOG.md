@@ -1,3 +1,67 @@
+## 0.7.0 (UNRELEASED)
+
+IMPROVEMENTS:
+
+BUG FIXES:
+
+## 0.6.3 (January 15, 2016)
+
+BUG FIXES:
+
+* Fixed an issue when running Consul as PID 1 in a Docker container where
+  it could consume CPU and show spurious failures for health checks, watch
+  handlers, and `consul exec` commands [GH-1592]
+
+## 0.6.2 (January 13, 2016)
+
+SECURITY:
+
+* Build against Go 1.5.3 to mitigate a security vulnerability introduced
+  in Go 1.5. For more information, please see https://groups.google.com/forum/#!topic/golang-dev/MEATuOi_ei4
+
+This is a security-only release; other than the version number and building
+against Go 1.5.3, there are no changes from 0.6.1.
+
+## 0.6.1 (January 6, 2016)
+
+BACKWARDS INCOMPATIBILITIES:
+
+* The new `-monitor-retry` option to `consul lock` defaults to 3. This
+  will cause the lock monitor to retry up to 3 times, waiting 1s between
+  each attempt if it gets a 500 error from the Consul servers. For the
+  vast majority of use cases this is desirable to prevent the lock from
+  being given up during a brief period of Consul unavailability. If you
+  want to get the previous default behavior you will need to set the
+  `-monitor-retry=0` option.
+
+IMPROVEMENTS:
+
+* Consul is now built with Go 1.5.2
+* Added source IP address and port information to RPC-related log error
+  messages and HTTP access logs [GH-1513] [GH-1448]
+* API clients configured for insecure SSL now use an HTTP transport that's
+  set up the same way as the Go default transport [GH-1526]
+* Added new per-host telemery on DNS requests [GH-1537]
+* Added support for reaping child processes which is useful when running
+  Consul as PID 1 in Docker containers [GH-1539]
+* Added new `-ui` command line and `ui` config option that enables a built-in
+  Consul web UI, making deployment much simpler [GH-1543]
+* Added new `-dev` command line option that creates a completely in-memory
+  standalone Consul server for development
+* Added a Solaris build, now that dependencies have been updated to support
+  it [GH-1568]
+* Added new `-try` option to `consul lock` to allow it to timeout with an error
+  if it doesn't acquire the lock [GH-1567]
+* Added a new `-monitor-retry` option to `consul lock` to help ride out brief
+  periods of Consul unavailabily without causing the lock to be given up [GH-1567]
+
+BUG FIXES:
+
+* Fixed broken settings icon in web UI [GH-1469]
+* Fixed a web UI bug where the supplied token wasn't being passed into
+  the internal endpoint, breaking some pages when multiple datacenters
+  were present [GH-1071]
+
 ## 0.6.0 (December 3, 2015)
 
 BACKWARDS INCOMPATIBILITIES:
@@ -12,7 +76,7 @@ FEATURES:
 * Service ACLs now apply to service discovery [GH-1024]
 * Added event ACLs to guard firing user events [GH-1046]
 * Added keyring ACLs for gossip encryption keyring operations [GH-1090]
-* Added a new socket check type that does a connect as a check [GH-1130]
+* Added a new TCP check type that does a connect as a check [GH-1130]
 * Added new "tag override" feature that lets catalog updates to a
   service's tags flow down to agents [GH-1187]
 * Ported in-memory database from LMDB to an immutable radix tree to improve
@@ -101,10 +165,14 @@ UPGRADE NOTES:
   This folder was used in versions of Consul up to 0.5.1. Consul version 0.5.2
   included a baked-in utility to automatically upgrade the data format, but
   this has been removed in Consul 0.6 to eliminate the dependency on cgo.
-* Previously, service discovery was wide open, and any client could query
-  information about any service without providing a token. Consul now requires
-  read-level access at a minimum when ACLs are enabled to return service
-  information over the REST or DNS interfaces.
+* New service read, event firing, and keyring ACLs may require special steps to
+  perform during an upgrade if ACLs are enabled and set to deny by default.
+* Consul will refuse to start if there are multiple private IPs available, so
+  if this is the case you will need to configure Consul's advertise or bind
+  addresses before upgrading.
+
+See https://www.consul.io/docs/upgrade-specific.html for detailed upgrade
+instructions.
 
 ## 0.5.2 (May 18, 2015)
 

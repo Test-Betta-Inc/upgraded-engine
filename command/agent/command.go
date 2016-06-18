@@ -18,6 +18,7 @@ import (
 	"github.com/armon/go-metrics/datadog"
 	"github.com/hashicorp/consul/watch"
 	"github.com/hashicorp/go-checkpoint"
+	"github.com/hashicorp/go-reap"
 	"github.com/hashicorp/go-syslog"
 	"github.com/hashicorp/logutils"
 	scada "github.com/hashicorp/scada-client"
@@ -59,17 +60,20 @@ func (c *Command) readConfig() *Config {
 	var retryInterval string
 	var retryIntervalWan string
 	var dnsRecursors []string
+	var dev bool
 	cmdFlags := flag.NewFlagSet("agent", flag.ContinueOnError)
 	cmdFlags.Usage = func() { c.Ui.Output(c.Help()) }
 
 	cmdFlags.Var((*AppendSliceValue)(&configFiles), "config-file", "json file to read config from")
 	cmdFlags.Var((*AppendSliceValue)(&configFiles), "config-dir", "directory of json files to read")
 	cmdFlags.Var((*AppendSliceValue)(&dnsRecursors), "recursor", "address of an upstream DNS server")
+	cmdFlags.BoolVar(&dev, "dev", false, "development server mode")
 
 	cmdFlags.StringVar(&cmdConfig.LogLevel, "log-level", "", "log level")
 	cmdFlags.StringVar(&cmdConfig.NodeName, "node", "", "node name")
 	cmdFlags.StringVar(&cmdConfig.Datacenter, "dc", "", "node datacenter")
 	cmdFlags.StringVar(&cmdConfig.DataDir, "data-dir", "", "path to the data directory")
+	cmdFlags.BoolVar(&cmdConfig.EnableUi, "ui", false, "enable the built-in web UI")
 	cmdFlags.StringVar(&cmdConfig.UiDir, "ui-dir", "", "path to the web UI directory")
 	cmdFlags.StringVar(&cmdConfig.PidFile, "pid-file", "", "path to file to store PID")
 	cmdFlags.StringVar(&cmdConfig.EncryptKey, "encrypt", "", "gossip encryption key")
@@ -135,7 +139,13 @@ func (c *Command) readConfig() *Config {
 		cmdConfig.RetryIntervalWan = dur
 	}
 
-	config := DefaultConfig()
+	var config *Config
+	if dev {
+		config = DevConfig()
+	} else {
+		config = DefaultConfig()
+	}
+
 	if len(configFiles) > 0 {
 		fileConfig, err := ReadConfigPaths(configFiles)
 		if err != nil {
@@ -160,7 +170,7 @@ func (c *Command) readConfig() *Config {
 	}
 
 	// Ensure we have a data directory
-	if config.DataDir == "" {
+	if config.DataDir == "" && !dev {
 		c.Ui.Error("Must specify data directory using -data-dir")
 		return nil
 	}
@@ -173,7 +183,7 @@ func (c *Command) readConfig() *Config {
 		if _, err := os.Stat(mdbPath); !os.IsNotExist(err) {
 			c.Ui.Error(fmt.Sprintf("CRITICAL: Deprecated data folder found at %q!", mdbPath))
 			c.Ui.Error("Consul will refuse to boot with this directory present.")
-			c.Ui.Error("See https://consul.io/docs/upgrade-specific.html for more information.")
+			c.Ui.Error("See https://www.consul.io/docs/upgrade-specific.html for more information.")
 			return nil
 		}
 	}
@@ -641,6 +651,33 @@ func (c *Command) Run(args []string) int {
 		defer server.Shutdown()
 	}
 
+	// Enable child process reaping
+	if (config.Reap != nil && *config.Reap) || (config.Reap == nil && os.Getpid() == 1) {
+		if !reap.IsSupported() {
+			c.Ui.Error("Child process reaping is not supported on this platform (set reap=false)")
+			return 1
+		} else {
+			logger := c.agent.logger
+			logger.Printf("[DEBUG] Automatically reaping child processes")
+
+			pids := make(reap.PidCh, 1)
+			errors := make(reap.ErrorCh, 1)
+			go func() {
+				for {
+					select {
+					case pid := <-pids:
+						logger.Printf("[DEBUG] Reaped child process %d", pid)
+					case err := <-errors:
+						logger.Printf("[ERR] Error reaping child process: %v", err)
+					case <-c.agent.shutdownCh:
+						return
+					}
+				}
+			}()
+			go reap.ReapChildren(pids, errors, c.agent.shutdownCh, &c.agent.reapLock)
+		}
+	}
+
 	// Check and shut down the SCADA listeners at the end
 	defer func() {
 		if c.scadaHttp != nil {
@@ -672,7 +709,7 @@ func (c *Command) Run(args []string) int {
 	// Register the watches
 	for _, wp := range config.WatchPlans {
 		go func(wp *watch.WatchPlan) {
-			wp.Handler = makeWatchHandler(logOutput, wp.Exempt["handler"])
+			wp.Handler = makeWatchHandler(logOutput, wp.Exempt["handler"], &c.agent.reapLock)
 			wp.LogOutput = c.logOutput
 			if err := wp.Run(httpAddr.String()); err != nil {
 				c.Ui.Error(fmt.Sprintf("Error running watch: %v", err))
@@ -859,7 +896,7 @@ func (c *Command) handleReload(config *Config) *Config {
 	// Register the new watches
 	for _, wp := range newConf.WatchPlans {
 		go func(wp *watch.WatchPlan) {
-			wp.Handler = makeWatchHandler(c.logOutput, wp.Exempt["handler"])
+			wp.Handler = makeWatchHandler(c.logOutput, wp.Exempt["handler"], &c.agent.reapLock)
 			wp.LogOutput = c.logOutput
 			if err := wp.Run(httpAddr.String()); err != nil {
 				c.Ui.Error(fmt.Sprintf("Error running watch: %v", err))
@@ -921,6 +958,7 @@ Usage: consul agent [options]
 Options:
 
   -advertise=addr          Sets the advertise address to use
+  -advertise-wan=addr      Sets address to advertise on wan instead of advertise addr
   -atlas=org/name          Sets the Atlas infrastructure name, enables SCADA.
   -atlas-join              Enables auto-joining the Atlas cluster
   -atlas-token=token       Provides the Atlas API token
@@ -962,6 +1000,7 @@ Options:
   -rejoin                  Ignores a previous leave and attempts to rejoin the cluster.
   -server                  Switches agent to server mode.
   -syslog                  Enables logging to syslog
+  -ui                      Enables the built-in static web UI server
   -ui-dir=path             Path to directory containing the Web UI resources
   -pid-file=path           Path to file to store agent PID
 

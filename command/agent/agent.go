@@ -110,6 +110,14 @@ type Agent struct {
 	// agent methods use this, so use with care and never override
 	// outside of a unit test.
 	endpoints map[string]string
+
+	// reapLock is used to prevent child process reaping from interfering
+	// with normal waiting for subprocesses to complete. Any time you exec
+	// and wait, you should take a read lock on this mutex. Only the reaper
+	// takes the write lock. This setup prevents us from serializing all the
+	// child process management with each other, it just serializes them
+	// with the child process reaper.
+	reapLock sync.RWMutex
 }
 
 // Create is used to create a new Agent. Returns
@@ -124,7 +132,7 @@ func Create(config *Config, logOutput io.Writer) (*Agent, error) {
 	if config.Datacenter == "" {
 		return nil, fmt.Errorf("Must configure a Datacenter")
 	}
-	if config.DataDir == "" {
+	if config.DataDir == "" && !config.DevMode {
 		return nil, fmt.Errorf("Must configure a DataDir")
 	}
 
@@ -226,6 +234,9 @@ func (a *Agent) consulConfig() *consul.Config {
 	} else {
 		base = consul.DefaultConfig()
 	}
+
+	// Apply dev mode
+	base.DevMode = a.config.DevMode
 
 	// Override with our config
 	if a.config.Datacenter != "" {
@@ -748,7 +759,7 @@ func (a *Agent) AddService(service *structs.NodeService, chkTypes CheckTypes, pe
 	a.state.AddService(service, token)
 
 	// Persist the service to a file
-	if persist {
+	if persist && !a.config.DevMode {
 		if err := a.persistService(service); err != nil {
 			return err
 		}
@@ -946,6 +957,7 @@ func (a *Agent) AddCheck(check *structs.HealthCheck, chkType *CheckType, persist
 				Script:   chkType.Script,
 				Interval: chkType.Interval,
 				Logger:   a.logger,
+				ReapLock: &a.reapLock,
 			}
 			monitor.Start()
 			a.checkMonitors[check.CheckID] = monitor
@@ -958,7 +970,7 @@ func (a *Agent) AddCheck(check *structs.HealthCheck, chkType *CheckType, persist
 	a.state.AddCheck(check, token)
 
 	// Persist the check
-	if persist {
+	if persist && !a.config.DevMode {
 		return a.persistCheck(check, chkType)
 	}
 
@@ -1021,6 +1033,10 @@ func (a *Agent) UpdateCheck(checkID, status, output string) error {
 
 	// Set the status through CheckTTL to reset the TTL
 	check.SetStatus(status, output)
+
+	if a.config.DevMode {
+		return nil
+	}
 
 	// Always persist the state for TTL checks
 	if err := a.persistCheckState(check, status, output); err != nil {

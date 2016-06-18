@@ -15,7 +15,7 @@ descriptions.
 
 When loading configuration, Consul loads the configuration from files
 and directories in lexical order. For example, configuration file `basic_config.json`
-will be processed before `extra_config.js`. Configuration specified later
+will be processed before `extra_config.json`. Configuration specified later
 will be merged into configuration specified earlier. In most cases,
 "merge" means that the later version will override the earlier. In
 some cases, such as event handlers, merging appends the handlers to the
@@ -124,6 +124,12 @@ The options below are all specified on the command-line.
   the use of filesystem locking, meaning some types of mounted folders (e.g. VirtualBox
   shared folders) may not be suitable.
 
+* <a name="_dev"></a><a href="#_dev">`-dev`</a> - Enable development server
+  mode. This is useful for quickly starting a Consul agent with all persistence
+  options turned off, enabling an in-memory server which can be used for rapid
+  prototyping or developing against the API. This mode is **not** intended for
+  production use as it does not write any data to disk.
+
 * <a name="_dc"></a><a href="#_dc">`-dc`</a> - This flag controls the datacenter in
   which the agent is running. If not provided,
   it defaults to "dc1". Consul has first-class support for multiple datacenters, but
@@ -228,8 +234,12 @@ The options below are all specified on the command-line.
 * <a name="_syslog"></a><a href="#_syslog">`-syslog`</a> - This flag enables logging to syslog. This
   is only supported on Linux and OSX. It will result in an error if provided on Windows.
 
+* <a name="_ui"></a><a href="#_ui">`-ui`</a> - Enables the built-in web UI
+  server and the required HTTP routes. This eliminates the need to maintain the
+  Consul web UI files separately from the binary.
+
 * <a name="_ui_dir"></a><a href="#_ui_dir">`-ui-dir`</a> - This flag provides the directory containing
-  the Web UI resources for Consul. This must be provided to enable the Web UI. The directory must be
+  the Web UI resources for Consul. This will automatically enable the Web UI. The directory must be
   readable to the agent.
 
 ## <a name="configuration_files"></a>Configuration Files
@@ -469,7 +479,7 @@ definitions support being updated during a reload.
 * <a name="http_api_response_headers"></a><a href="#http_api_response_headers">`http_api_response_headers`</a>
   This object allows adding headers to the HTTP API
   responses. For example, the following config can be used to enable
-  [CORS](http://en.wikipedia.org/wiki/Cross-origin_resource_sharing) on
+  [CORS](https://en.wikipedia.org/wiki/Cross-origin_resource_sharing) on
   the HTTP API endpoints:
 
     ```javascript
@@ -503,6 +513,11 @@ definitions support being updated during a reload.
 
 * <a name="protocol"></a><a href="#protocol">`protocol`</a> Equivalent to the
   [`-protocol` command-line flag](#_protocol).
+
+* <a name="reap"></a><a href="#reap">`reap`</a> This controls Consul's automatic reaping of child processes,
+  which is useful if Consul is running as PID 1 in a Docker container. If this isn't specified, then Consul will
+  automatically reap child processes if it detects it is running as PID 1. If this is set to true or false, then
+  it controls reaping regardless of Consul's PID (forces reaping on or off, respectively).
 
 * <a name="recursor"></a><a href="#recursor">`recursor`</a> Provides a single recursor address.
   This has been deprecated, and the value is appended to the [`recursors`](#recursors) list for
@@ -557,24 +572,25 @@ definitions support being updated during a reload.
 * <a name="start_join_wan"></a><a href="#start_join_wan">`start_join_wan`</a> An array of strings specifying
   addresses of WAN nodes to [`-join-wan`](#_join_wan) upon startup.
 
-* <a name="statsd_addr"></a><a href="#statsd_addr">`statsd_addr`</a> This provides the address of a statsd
-  instance.  If provided, Consul will send various telemetry information to that instance for aggregation.
-  This can be used to capture runtime information. This sends UDP packets only and can be used with statsd
-  or statsite.
+* <a name="statsd_addr"></a><a href="#statsd_addr">`statsd_addr`</a> This provides the address of a
+  statsd instance in the format `host:port`.  If provided, Consul will send various telemetry information
+  to that instance for aggregation. This can be used to capture runtime information. This sends UDP packets
+  only and can be used with statsd or statsite.
 
 * <a name="dogstatsd_addr"></a><a href="#dogstatsd_addr">`dogstatsd_addr`</a> This provides the
-  address of a DogStatsD instance. DogStatsD is a protocol-compatible flavor of statsd, with the added ability
-  to decorate metrics with tags and event information. If provided, Consul will send various telemetry information
-  to that instance for aggregation. This can be used to capture runtime information.
+  address of a DogStatsD instance in the format `host:port`. DogStatsD is a protocol-compatible flavor of
+  statsd, with the added ability to decorate metrics with tags and event information. If provided, Consul will
+  send various telemetry information to that instance for aggregation. This can be used to capture runtime
+  information.
 
 * <a name="dogstatsd_tags"></a><a href="#dogstatsd_tags">`dogstatsd_tags`</a> This provides a list of global tags
   that will be added to all telemetry packets sent to DogStatsD. It is a list of strings, where each string
   looks like "my_tag_name:my_tag_value".
 
 * <a name="statsite_addr"></a><a href="#statsite_addr">`statsite_addr`</a> This provides the address of a
-  statsite instance. If provided, Consul will stream various telemetry information to that instance for
-  aggregation. This can be used to capture runtime information. This streams via
-  TCP and can only be used with statsite.
+  statsite instance in the format `host:port`. If provided, Consul will stream various telemetry information
+  to that instance for aggregation. This can be used to capture runtime information. This streams via TCP and
+  can only be used with statsite.
 
 * <a name="statsite_prefix"></a><a href="#statsite_prefix">`statsite_prefix`</a>
   The prefix used while writing all telemetry data to statsite. By default, this
@@ -583,6 +599,9 @@ definitions support being updated during a reload.
 * <a name="syslog_facility"></a><a href="#syslog_facility">`syslog_facility`</a> When
   [`enable_syslog`](#enable_syslog) is provided, this controls to which
   facility messages are sent. By default, `LOCAL0` will be used.
+
+* <a name="ui"></a><a href="#ui">`ui`</a> - Equivalent to the [`-ui`](#_ui)
+  command-line flag.
 
 * <a name="ui_dir"></a><a href="#ui_dir">`ui_dir`</a> - Equivalent to the
   [`-ui-dir`](#_ui_dir) command-line flag.
